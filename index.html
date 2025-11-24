@@ -1,0 +1,374 @@
+<!doctype html>
+<html lang="id">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Fermi–Dirac Solver</title>
+  <style>
+    /* -------- Theme variables -------- */
+    :root{
+      --bg: #f7fafc;
+      --card: #ffffff;
+      --text: #0f172a;
+      --muted: #475569;
+      --accent: #0ea5a4;
+      --btn: #0f62fe;
+      --pre-bg: #0f172a;
+      --pre-color: #e6edf3;
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial;
+    }
+
+    html.dark {
+      --bg: #0d0d0d;
+      --card: #111214;
+      --text: #e6e6e6;
+      --muted: #9aa3ad;
+      --accent: #06b6d4;
+      --btn: #2563eb;
+      --pre-bg: #0b1220;
+      --pre-color: #e6edf3;
+    }
+
+    /* transition */
+    * { transition: background-color 220ms ease, color 220ms ease, box-shadow 220ms ease; }
+
+    body{
+      margin: 24px auto;
+      padding: 20px;
+      max-width: 1000px;
+      background: var(--bg);
+      color: var(--text);
+    }
+    h1{font-size:20px;margin:0 0 12px}
+
+    .card{
+      background: var(--card);
+      padding: 16px;
+      border-radius: 14px;
+      box-shadow: 0 8px 26px rgba(2,6,23,0.18);
+      margin-bottom: 16px;
+      border: 1px solid rgba(255,255,255,0.03);
+    }
+
+    label{display:block;margin-top:8px;font-size:13px}
+    input[type=number], textarea, select{
+      padding:8px;border-radius:8px;border:1px solid rgba(0,0,0,0.06);width:100%;box-sizing:border-box;
+      background: transparent;
+      color: inherit;
+      outline: none;
+    }
+    .row{display:flex;gap:12px}
+    .col{flex:1}
+    button{
+      background: var(--btn);
+      color: white;
+      border: 0;
+      padding:8px 12px;
+      border-radius: 10px;
+      cursor:pointer;
+      box-shadow: 0 6px 18px rgba(2,6,23,0.15);
+    }
+    button.ghost{
+      background: transparent;
+      color: var(--text);
+      border:1px solid rgba(0,0,0,0.06);
+    }
+    .controls{display:flex;gap:8px;flex-wrap:wrap}
+    .download{background:#2563eb}
+    .levels{display:flex;gap:8px;flex-wrap:wrap;margin-top:8px}
+    .level{background:rgba(255,255,255,0.02);padding:8px;border-radius:8px;display:flex;gap:6px;align-items:center}
+    .small{font-size:12px;color:var(--muted)}
+    img.screenshot{max-width:260px;border-radius:8px;border:1px solid rgba(0,0,0,0.06)}
+
+    pre{
+      background: var(--pre-bg);
+      color: var(--pre-color);
+      padding:12px;border-radius:8px;overflow:auto;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, "Roboto Mono", monospace;
+    }
+
+    /* plot container */
+    #plot{
+      width:100%;
+      max-width:700px;
+      margin: 28px auto;
+      border-radius:16px;
+      padding:12px;
+      background: linear-gradient(180deg, rgba(255,255,255,0.02), transparent);
+      box-shadow: 0 12px 30px rgba(2,6,23,0.25);
+    }
+
+    /* responsive */
+    @media (max-width:720px){
+      .row{flex-direction:column}
+      body{padding:12px;margin:12px}
+    }
+  </style>
+</head>
+<body>
+  <h1>Fermi–Dirac Solver</h1>
+
+  <div class="card">
+    <div style="display:flex;gap:12px;align-items:flex-start;justify-content:space-between;">
+      <div>
+        <label class="small">Screenshot soal (opsional)</label>
+        <img src="/mnt/data/fb1c6ebf-ecd5-4e54-a7f8-35121dc5c976.jpg" alt="soal" class="screenshot">
+      </div>
+      <div style="width:60%">
+        <label>Jumlah partikel (N)</label>
+        <input id="N" type="number" min="0" value="4">
+
+        <label style="margin-top:10px">Level energi — degenerasi tiap level</label>
+        <div id="levels" class="levels"></div>
+        <div style="margin-top:8px" class="controls">
+          <button id="addLevel">+ Tambah level</button>
+          <button id="removeLevel" class="ghost">- Hapus level</button>
+          <button id="downloadHtml" class="download">Download HTML</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <label class="small">Pengaturan</label>
+    <div class="row">
+      <div class="col">
+        <label><input id="fermiConstraint" type="checkbox" checked> Terapkan aturan Fermi (maks 1 partikel per sub-state)</label>
+        <div class="small" style="margin-top:6px">Jika dinonaktifkan, kombinasi C(g,n) masih dihitung, tapi n dapat melebihi g (matematis untuk boson).</div>
+      </div>
+      <div style="width:220px">
+        <label>Partikel distinguishable?</label>
+        <select id="distinguishable">
+          <option value="false">Tidak (indistinguishable)</option>
+          <option value="true">Ya (distinguishable)</option>
+        </select>
+      </div>
+    </div>
+    <div style="margin-top:12px">
+      <button id="compute">Hitung macrostates & probabilitas</button>
+      <button id="reset" class="ghost">Reset ke contoh</button>
+    </div>
+  </div>
+
+  <div class="card" id="output">
+    <h2 style="font-size:16px;margin:0 0 8px">Hasil</h2>
+    <div id="summary" class="small">Belum dihitung.</div>
+    <div id="tables" style="margin-top:12px"></div>
+  </div>
+
+  <script>
+    // --- util math ---
+    function factorial(n){
+      if(n < 0) return NaN;
+      if(n <= 1) return 1;
+      let r = 1;
+      for(let i=2;i<=n;i++) r *= i;
+      return r;
+    }
+    function combination(n,r){
+      if(r > n || r < 0) return 0;
+      return factorial(n) / (factorial(r) * factorial(n-r));
+    }
+
+    // --- DOM helpers ---
+    const levelsEl = document.getElementById('levels');
+    const Ninput = document.getElementById('N');
+
+    function createLevelInput(g = 1){
+      const wrapper = document.createElement('div');
+      wrapper.className = 'level';
+      const label = document.createElement('div');
+      label.innerHTML = 'g = ';
+      const input = document.createElement('input');
+      input.type = 'number'; input.min = '1'; input.value = String(g); input.style.width = '64px';
+      const del = document.createElement('button'); del.textContent = '✕'; del.className='ghost'; del.style.padding='6px';
+      del.onclick = ()=>{ wrapper.remove(); };
+      wrapper.appendChild(label); wrapper.appendChild(input); wrapper.appendChild(del);
+      return wrapper;
+    }
+
+    function getLevelsDegeneracy(){
+      const arr = [];
+      for(const node of levelsEl.querySelectorAll('.level')){
+        const v = Number(node.querySelector('input').value) || 0;
+        arr.push(v);
+      }
+      return arr;
+    }
+
+    document.getElementById('addLevel').onclick = ()=>{ levelsEl.appendChild(createLevelInput(1)); };
+    document.getElementById('removeLevel').onclick = ()=>{ const nodes = levelsEl.querySelectorAll('.level'); if(nodes.length) nodes[nodes.length-1].remove(); };
+
+    document.getElementById('downloadHtml').onclick = ()=>{
+      const html = document.documentElement.outerHTML;
+      const blob = new Blob([html], {type: 'text/html'});
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url; a.download = 'fermi_dirac_solver.html';
+      document.body.appendChild(a); a.click(); a.remove();
+      URL.revokeObjectURL(url);
+    };
+
+    document.getElementById('reset').onclick = ()=>{
+      Ninput.value = 4;
+      levelsEl.innerHTML = '';
+      levelsEl.appendChild(createLevelInput(2));
+      levelsEl.appendChild(createLevelInput(1));
+      document.getElementById('fermiConstraint').checked = true;
+      document.getElementById('distinguishable').value = 'false';
+      clearOutput();
+    };
+
+    function clearOutput(){
+      document.getElementById('summary').textContent = 'Belum dihitung.';
+      document.getElementById('tables').innerHTML = '';
+    }
+
+    // --- generate macrostates ---
+    function generateMacrostates(N, levelsCount){
+      const results = [];
+      function helper(level, rem, cur){
+        if(level === levelsCount){
+          if(rem === 0) results.push(cur.slice());
+          return;
+        }
+        for(let i=0;i<=rem;i++){
+          cur[level] = i;
+          helper(level+1, rem-i, cur);
+        }
+      }
+      helper(0, N, new Array(levelsCount).fill(0));
+      return results;
+    }
+
+    // multiplicity for indistinguishable with combinatorial factor W = Π C(g_i, n_i)
+    function multiplicityIndist(macro, gArr, applyFermi){
+      let W = 1;
+      for(let i=0;i<macro.length;i++){
+        const n = macro[i];
+        const g = gArr[i];
+        if(applyFermi && n > g) return 0; // forbidden for fermions
+        W *= combination(g, n);
+      }
+      return W;
+    }
+
+    // multiplicity if particles are distinguishable: N! / Π n_i!
+    function multiplicityDistinguishable(macro){
+      const N = macro.reduce((a,b)=>a+b,0);
+      let denom = 1;
+      for(const n of macro) denom *= factorial(n);
+      return factorial(N) / denom;
+    }
+
+    // --- render results ---
+    function renderResults(N, gArr, applyFermi, isDistinguishable){
+      const out = document.getElementById('tables');
+      out.innerHTML = '';
+      const macrostates = generateMacrostates(N, gArr.length);
+      const rows = [];
+      let totalInd = 0, totalDist = 0;
+
+      for(const m of macrostates){
+        const Wind = multiplicityIndist(m, gArr, applyFermi);
+        const Wdist = multiplicityDistinguishable(m);
+        rows.push({m, Wind, Wdist});
+        totalInd += Wind;
+        totalDist += Wdist;
+      }
+
+      // Summary
+      const summary = document.getElementById('summary');
+      const kB = 1.380649e-23; // J/K
+      const S_total_ind = totalInd > 0 ? kB * Math.log(totalInd) : 0;
+      const S_total_dist = totalDist > 0 ? kB * Math.log(totalDist) : 0;
+
+      summary.innerHTML = `Jumlah macrostates yang memungkinkan: ${rows.length}.<br>`+
+        `Total multiplicity (indist): ${totalInd} → S = k_B ln W = ${S_total_ind.toExponential(6)} J/K.<br>`+
+        `Total multiplicity (dist): ${totalDist} → S = k_B ln W = ${S_total_dist.toExponential(6)} J/K.`;
+
+      // Build table text
+      const pre = document.createElement('pre');
+      pre.style.whiteSpace = 'pre-wrap';
+
+      let header = 'macrostate\tW(indist)\tP(indist)\tS(indist)[J/K]\tW(dist)\tP(dist)\tS(dist)[J/K]\n';
+      let lines = header;
+
+      // use outer totalInd/totalDist (no redeclaration)
+      for (const r of rows) {
+        const pInd = totalInd > 0 ? (r.Wind / totalInd) : 0;
+        const pDist = totalDist > 0 ? (r.Wdist / totalDist) : 0;
+
+        const S_ind = r.Wind > 0 ? (kB * Math.log(r.Wind)) : 0;
+        const S_dist = r.Wdist > 0 ? (kB * Math.log(r.Wdist)) : 0;
+
+        lines += `${JSON.stringify(r.m)}\t${r.Wind}\t${pInd.toFixed(6)}\t${S_ind.toExponential(6)}\t` +
+                 `${r.Wdist}\t${pDist.toFixed(6)}\t${S_dist.toExponential(6)}\n`;
+      }
+
+      pre.textContent = lines;
+      out.appendChild(pre);
+
+      // CSV export
+      const csvbtn = document.createElement('button');
+      csvbtn.textContent = 'Export CSV';
+      csvbtn.className = 'ghost';
+      csvbtn.style.marginTop = '8px';
+      csvbtn.onclick = () => {
+        let csv = header.replace(/\t/g, ',') + '\n';
+        for (const r of rows) {
+          const pInd = totalInd > 0 ? (r.Wind / totalInd) : 0;
+          const pDist = totalDist > 0 ? (r.Wdist / totalDist) : 0;
+          const S_ind = r.Wind > 0 ? (kB * Math.log(r.Wind)) : 0;
+          const S_dist = r.Wdist > 0 ? (kB * Math.log(r.Wdist)) : 0;
+          csv += `${JSON.stringify(r.m)},${r.Wind},${pInd.toFixed(6)},${S_ind},${r.Wdist},${pDist.toFixed(6)},${S_dist}\n`;
+        }
+        const blob = new Blob([csv], { type: 'text/csv' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a'); a.href = url; a.download = 'fermi_results.csv'; document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url);
+      };
+      out.appendChild(csvbtn);
+    }
+
+    document.getElementById('compute').onclick = ()=>{
+      const N = Number(Ninput.value);
+      if(Number.isNaN(N) || N < 0){ alert('Jumlah partikel harus bilangan bulat >= 0'); return; }
+      const gArr = getLevelsDegeneracy();
+      if(gArr.length === 0){ alert('Tambahkan setidaknya 1 level energi'); return; }
+      for(const g of gArr){ if(Number.isNaN(g) || g < 0){ alert('Degeneracy harus >= 0'); return; } }
+      const applyFermi = document.getElementById('fermiConstraint').checked;
+      const isDistinguishable = (document.getElementById('distinguishable').value === 'true');
+      renderResults(N, gArr, applyFermi, isDistinguishable);
+    };
+
+    // init example
+    (function init(){ document.getElementById('reset').click(); })();
+  </script>
+
+  <!-- Theme Toggle + Plot -->
+  <div style="text-align:left;margin:12px 0;">
+    <button id="themeToggle" class="ghost" style="border-radius:12px;padding:10px 16px;">Toggle Theme</button>
+  </div>
+
+  <!-- Plotly Container -->
+  <div id="plot"></div>
+
+  <!-- Plotly JS (load before using) -->
+  <script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
+  <script>
+    // Theme toggle: toggle `dark` class on <html>
+    const html = document.documentElement;
+    document.getElementById('themeToggle').onclick = () => {
+      html.classList.toggle('dark');
+    };
+
+    // Example Plotly Chart (responsive)
+    function drawExamplePlot(){
+      const trace = { x:[1,2,3,4], y:[11,15,13,17], mode:'lines+markers', type:'scatter', marker:{size:6} };
+      const layout = { margin:{l:40,r:20,t:20,b:40}, paper_bgcolor:'rgba(0,0,0,0)', plot_bgcolor:'rgba(0,0,0,0)' };
+      Plotly.newPlot('plot',[trace],layout,{responsive:true});
+    }
+    drawExamplePlot();
+  </script>
+</body>
+</html>
